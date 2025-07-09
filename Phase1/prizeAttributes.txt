@@ -1,0 +1,56 @@
+Core physics attributes (drive real-time feel)
+
+Size (bounding box or convex hull)
+Mass / weight (kg)
+    primaryMass (kg) – total mass for quick look-ups.
+    massNodes[] – an array of nodes, each with { position: Vec3, massFraction: 0-1 }.
+    position is local to the prize mesh’s origin.
+    massFraction values sum to 1.0 (or use kg directly).
+    inertiaTensorOverride (optional matrix) – if you want to hand-tune spin behavior.
+Static friction coefficient (claw begins to slide)
+Dynamic friction coefficient (sliding in motion)
+Restitution / bounciness (how much it rebounds)
+Center-of-mass offset (makes oddly weighted toys tip or spin)
+Grab points (specific mesh vertices that register “good grip”)
+Compliance / squish factor (how far cloth or plush compresses)
+Shape complexity (sphere vs irregular: affects how easily the claw fits)
+
+Display cues: scale the 3-D mesh directly for size; subtly vary texture roughness/normal maps for friction; 
+use a small holographic overlay showing center-of-mass dot; animate a compression preview when player hovers 
+so they “feel” the squishiness.
+
+
+Skill-testing modifiers (increase difficulty variety)
+
+Surface material tag (e.g., velvet, plastic, rubber) that modifies grip strength
+Rotation inertia / angular damping (how fast the prize spins when nudged)
+Aerodynamic drag (for lightweight plushies tossed by air blasts)
+Magnetism / metal parts (allow special magnetic claw upgrades later)
+“Hook point” count (number of places the claw can latch onto)
+Temperature or stickiness effects (rare event items: ice-coated, gooey)
+Off-axis weight: a plush elephant with a heavy ceramic nose tips forward when lifted.
+Dual-weight items: capsule with a coin inside rolls unpredictably.
+Long objects: a toy sword’s COM sits near the hilt, so gripping the blade end is unstable.
+
+Display cues: material presets change shader (shinier plastic, fuzzy plush); 
+show particle FX (ice mist, sticky gloss) or small UI icons next to the model.
+
+
+Meta-game stats (progression & economy)
+
+Rarity tier (common → legendary)
+Token cost or payout multipliers
+XP awarded on capture
+Collection set ID (encourages completing themed series)
+Condition / durability (may degrade if dropped too many times)
+
+Display cues: rarity color halo, floating text tag, or card-style overlay.
+
+
+AI/behavior attributes (advanced)
+
+Self-movement pattern (wind-up toys that jitter inside pit)
+Reactive torque (spins when touched)
+Weight shift timer (inflatable toys slowly deflate)
+
+Display cues: idle animations baked into the model; tooltip describing special behavior.

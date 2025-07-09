@@ -1,0 +1,53 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    font-family: 'Orbitron', 'Courier New', monospace;
+  }
+  
+  body {
+    @apply bg-arcade-dark text-white overflow-hidden;
+    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+  }
+}
+
+@layer components {
+  .arcade-button {
+    @apply bg-arcade-primary text-white font-bold py-3 px-6 rounded-lg 
+           shadow-lg hover:shadow-xl transform hover:scale-105 
+           transition-all duration-200 border-2 border-arcade-neon-pink
+           hover:animate-neon-pulse;
+  }
+  
+  .arcade-panel {
+    @apply bg-arcade-darker border-2 border-arcade-neon-blue 
+           rounded-lg p-4 shadow-lg backdrop-blur-sm;
+  }
+  
+  .neon-text {
+    @apply text-arcade-neon-pink animate-neon-pulse;
+  }
+  
+  .crane-canvas {
+    @apply w-full h-full bg-gradient-to-b from-arcade-dark to-arcade-darker;
+  }
+}
+
+/* Custom scrollbar for arcade feel */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  @apply bg-arcade-darker;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-arcade-neon-blue rounded-full;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  @apply bg-arcade-neon-pink;
+} 

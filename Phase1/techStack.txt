@@ -1,0 +1,29 @@
+1. State & async-data management
+    React Query / TanStack Query (server-state caching, background refetch, optimistic updates).
+    Lightweight global store (Zustand, Jotai, Recoil) for UI-only state like modals or sound settings.
+2. Error resilience & reporting
+    React Error Boundaries around the 3-D canvas and payment entry flows.
+    Sentry (or similar) with source-map upload in CI, tied to git SHA.
+3. Build-time polish
+    Storybook for component isolation and visual regression tests.
+    Bundle-analysis + performance budgets (vite-plugin-inspect, rollup-visualizer).
+    Automatic image/GPU texture optimisation pipeline (sharp, gltf-pipeline).
+4. Progressive Web App niceties
+    Install prompt and home-screen icon (helps on mobile arcade kiosks).
+    Orientation lock / viewport meta for tall portrait mode if the game needs it.
+5. Responsive & input handling
+    Touch/gesture layer (pinch-zoom, swipe) alongside keyboard / gamepad.
+    ResizeObserver to keep the canvas pixel-perfect when the browser UI hides on scroll (mobile).
+6. Internationalisation & localisation
+    i18next or react-intl, even if only English at first—retro-fitting text keys later is painful.
+7. Feature flags & remote config
+    LaunchDarkly, Split, or a lightweight JSON fetch so you can tweak prize rarity, enable seasonal themes, etc., without redeploying.
+8. Accessibility extras (beyond Phase 7 list)
+    NVDA/VoiceOver testing for menu flows.
+    Captioning for sound effects / voice prompts.
+9. Front-end observability
+    Web-Vitals export (CLS, LCP, FID) to your metrics pipeline.
+    Custom traces for “time-to-first-move” and “frame-drops” during gameplay.
+10. Security in the browser
+    CSP headers and Subresource Integrity for CDN assets.
+    Obfuscation / tamper detection on the physics seed to deter cheating.
