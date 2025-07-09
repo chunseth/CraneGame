@@ -1,34 +1,53 @@
 import { useRef, useState, useEffect } from 'react'
 import { useBox, useCylinder, usePointToPointConstraint } from '@react-three/cannon'
 import { Text } from '@react-three/drei'
-import { Mesh } from 'three'
-import { useFrame } from '@react-three/fiber'
+import { Mesh, Raycaster, Vector3 } from 'three'
+import { useFrame, useThree } from '@react-three/fiber'
 
-export default function Crane() {
-  const [isGameStarted, setIsGameStarted] = useState(false)
-  const [cranePosition, setCranePosition] = useState([0, 0, 0])
-  const [targetPosition, setTargetPosition] = useState([0, 0, 0])
-  const [isExtended, setIsExtended] = useState(false)
-  const [currentArmHeight, setCurrentArmHeight] = useState(0.2)
-  const [originalArmHeight] = useState(0.2)
-  const [extendedArmHeight] = useState(1.5)
-  const [isExtending, setIsExtending] = useState(false)
+interface CraneProps {
+  isGameStarted: boolean
+  setIsGameStarted: (started: boolean) => void
+  isExtended: boolean
+  setIsExtended: (extended: boolean) => void
+  initialPosition?: [number, number, number]
+  onRetractionComplete?: () => void
+}
+
+export default function Crane({ isGameStarted, setIsGameStarted, isExtended, setIsExtended, initialPosition = [0, 0, 0], onRetractionComplete }: CraneProps) {
+  const [cranePosition, setCranePosition] = useState(initialPosition)
+  const [targetPosition, setTargetPosition] = useState(initialPosition)
+  const [cableLength, setCableLength] = useState(0.2) // Current visible cable length
+  const [maxCableLength] = useState(3) // Maximum cable length
+  const [cableSegments, setCableSegments] = useState(1) // Number of active cable segments
+  const [maxAllowedLength, setMaxAllowedLength] = useState(5.0) // Maximum allowed length based on obstacles
+  const [waitingForRetraction, setWaitingForRetraction] = useState(false) // Track if we're waiting for cable to retract
+  
+  // Update position when initialPosition prop changes
+  useEffect(() => {
+    setCranePosition(initialPosition)
+    setTargetPosition(initialPosition)
+  }, [initialPosition])
+  
+  // Raycasting setup
+  const { scene } = useThree()
+  const raycaster = useRef(new Raycaster())
+  const rayOrigin = useRef(new Vector3())
+  const rayDirection = useRef(new Vector3(0, -1, 0)) // Pointing straight down
   
   // Base physics - now dynamic with high mass to simulate being "attached" to ceiling
   const [baseRef, baseApi] = useBox(() => ({
     mass: 1, // Very high mass to simulate being "attached" to ceiling
-    position: [0, 2.975, 0], // Fixed initial position
+    position: [initialPosition[0], 2.975, initialPosition[2]], // Use initial position
     args: [0.3, 0.05, 0.3],
     type: 'Dynamic',
     linearDamping: 0.9, // High damping to prevent unwanted movement
-    angularDamping: 1.0, // Maximum angular damping to prevent any rotation
-    fixedRotation: true, // Lock rotation completely
+    fixedRotation: true, 
   }), useRef<Mesh>(null))
 
   // Create an invisible anchor point at the ceiling to constrain the base
   const [anchorRef, anchorApi] = useBox(() => ({
     mass: 0, // Static anchor
-    position: [0, 2.975, 0], // Same height as base
+    position: [initialPosition[0], 2.975, initialPosition[2]], // Use initial position
     args: [0.01, 0.01, 0.01], // Very small invisible anchor
     type: 'Static',
   }), useRef<Mesh>(null))
@@ -39,37 +58,90 @@ export default function Crane() {
     pivotB: [0, 0, 0], // Center of anchor
   })
 
-  // Arm physics (cylinder) - now dynamic with momentum
-  const [armRef, armApi] = useCylinder(() => ({
-    mass: 2, // Increased mass for more momentum
-    position: [0, 2.85, 0], // Fixed initial position
-    args: [0.025, 0.025, originalArmHeight, 8], // radiusTop, radiusBottom, height, segments
-    type: 'Dynamic',
-    linearDamping: 0.8, // Add damping to reduce oscillation
-    angularDamping: 0.9, // Add angular damping
-  }), useRef<Mesh>(null))
+  // Cable segments - create an array of refs for dynamic cable segments
+  const cableSegmentRefs = useRef<(Mesh | null)[]>([])
+  const cableSegmentApis = useRef<any[]>([])
+  
+  // Initialize cable segments
+  const segmentLength = 0.2 // Length of each cable segment
+  const maxSegments = Math.ceil(maxCableLength / segmentLength)
+  
+  // Create cable segment physics bodies - only create the ones we need
+  const segmentRefs: any[] = []
+  const segmentApis: any[] = []
+  
+  for (let i = 0; i < maxSegments; i++) {
+    const [segmentRef, segmentApi] = useCylinder(() => ({
+      mass: 0.1, // Very light mass for cable segments
+      position: [initialPosition[0], 2.85 - i * segmentLength, initialPosition[2]], // Use initial position
+      args: [0.015, 0.015, segmentLength, 8], 
+      type: 'Static', // Start as static to prevent falling
+      linearDamping: 0.9, // High damping to reduce oscillation
+      angularDamping: 0.95, // High angular damping
+    }), useRef<Mesh>(null))
+    
+    segmentRefs.push(segmentRef)
+    segmentApis.push(segmentApi)
+  }
+  
+  cableSegmentRefs.current = segmentRefs
+  cableSegmentApis.current = segmentApis
 
   // Head physics - now dynamic with momentum
   const [headRef, headApi] = useBox(() => ({
-    mass: 1.5, // Increased mass for more momentum
-    position: [0, 2.65, 0], // Fixed initial position
+    mass: 0.6, 
+    position: [initialPosition[0], 2.65, initialPosition[2]], 
     args: [0.2, 0.05, 0.2],
-    type: 'Dynamic',
+    type: 'Static', // Start as static to prevent falling
     linearDamping: 0.8, // Add damping to reduce oscillation
     angularDamping: 0.9, // Add angular damping
   }), useRef<Mesh>(null))
 
-  // Constraint to connect arm to base - now with more flexibility
-  usePointToPointConstraint(armRef, baseRef, {
-    pivotA: [0, currentArmHeight/2, 0], // Top of arm (fixed to ceiling)
-    pivotB: [0, -0.025, 0], // Bottom of base
-  })
+  // Initialize all segments and head 
+  useEffect(() => {
+    for (let i = 0; i < maxSegments; i++) {
+      const segmentApi = segmentApis[i]
+      if (segmentApi) {
+        const targetY = 2.85 - i * segmentLength
+        segmentApi.position.set(initialPosition[0], targetY, initialPosition[2])
+        segmentApi.velocity.set(0, 0, 0)
+      }
+    }
+    
+    // Also initialize the head position
+    if (headApi) {
+      const headY = 2.85 - (cableSegments - 1) * segmentLength - segmentLength/2 - 0.025
+      headApi.position.set(initialPosition[0], headY, initialPosition[2])
+      headApi.velocity.set(0, 0, 0)
+    }
+  }, [segmentApis, maxSegments, headApi, cableSegments, initialPosition])
 
-  // Constraint to connect head to arm - now with more flexibility
-  usePointToPointConstraint(headRef, armRef, {
-    pivotA: [0, 0.025, 0], // Top of head
-    pivotB: [0, -currentArmHeight/2, 0], // Bottom of arm (this will move down as arm extends)
-  })
+  // Function to detect obstacles below the crane
+  const detectObstacles = () => {
+    // Set ray origin to crane position
+    rayOrigin.current.set(cranePosition[0], 2.725, cranePosition[2])
+    
+    // Cast ray downward
+    raycaster.current.set(rayOrigin.current, rayDirection.current)
+    const intersects = raycaster.current.intersectObjects(scene.children, true)
+    
+    // Filter out the crane's own meshes
+    const filteredIntersects = intersects.filter(intersection => {
+      const mesh = intersection.object as Mesh
+      // Skip crane base, cable segments, and head
+      return !mesh.userData.isCraneComponent
+    })
+    
+    if (filteredIntersects.length > 0) {
+      const distance = filteredIntersects[0].distance
+      // Calculate maximum allowed cable length (distance from crane to obstacle)
+      const maxLength = Math.max(0.2, distance - 0.025) // Subtract half head height
+      setMaxAllowedLength(maxLength)
+    } else {
+      // No obstacles found, can extend to full length
+      setMaxAllowedLength(maxCableLength)
+    }
+  }
 
   // Smooth lerping animation for base only
   useFrame(() => {
@@ -82,14 +154,28 @@ export default function Crane() {
       
       setCranePosition([newX, cranePosition[1], newZ])
       
-      // Instant arm extension
-      const targetHeight = isExtended ? extendedArmHeight : originalArmHeight
+      // Cable extension logic
+      const targetLength = isExtended ? maxAllowedLength : 0.2
       
-      if (Math.abs(currentArmHeight - targetHeight) > 0.01) {
-        setCurrentArmHeight(targetHeight)
-        setIsExtending(true) // Mark that we're actively extending
+      if (Math.abs(cableLength - targetLength) > 0.01) {
+        const newLength = cableLength + (targetLength > cableLength ? 0.05 : -0.05) // Extend/retract gradually
+        const clampedLength = Math.max(0.2, Math.min(maxAllowedLength, newLength))
+        setCableLength(clampedLength)
+        
+        // Update number of active segments based on the new length
+        const newSegments = Math.ceil(clampedLength / segmentLength)
+        if (newSegments !== cableSegments) {
+          setCableSegments(newSegments)
+        }
       } else {
-        setIsExtending(false) // Stop extending when we reach target
+        // Cable has reached target length
+        if (waitingForRetraction && !isExtended && Math.abs(cableLength - 0.2) < 0.01) {
+          // Cable has fully retracted, trigger transition back to OldCrane
+          setWaitingForRetraction(false)
+          if (onRetractionComplete) {
+            onRetractionComplete()
+          }
+        }
       }
     }
   })
@@ -100,13 +186,12 @@ export default function Crane() {
       // Calculate the target position for the base
       const targetX = cranePosition[0]
       const targetZ = cranePosition[2]
-      const targetY = 2.975 // Keep base at ceiling height
       
       // Apply forces to move base toward target position
-      const forceStrength = 5000 // High force to overcome high mass
+      const forceStrength = 50 // High force to overcome high mass
       baseApi.applyForce([
         (targetX - cranePosition[0]) * forceStrength,
-        (targetY - 2.975) * forceStrength,
+        0,
         (targetZ - cranePosition[2]) * forceStrength
       ], [0, 0, 0])
     }
@@ -120,22 +205,52 @@ export default function Crane() {
     }
   }, [cranePosition, isGameStarted, anchorApi])
 
-  // Update arm and head positions only during active extension/retraction
+  // Update cable segments and head positions during movement
   useEffect(() => {
-    if (isGameStarted && isExtending) {
-      // Calculate new positions based on current arm height
-      // Top of arm should stay at 2.95 (ceiling height - half base height)
-      const armTopY = 2.95
-      const armCenterY = armTopY - currentArmHeight/2 // Center of arm
-      const headY = armCenterY - currentArmHeight/2 - 0.025 // Bottom of arm minus half head height
+    if (isGameStarted) {
+      // Detect obstacles below the crane
+      detectObstacles()
       
-      // Update arm position (center of arm)
-      armApi.position.set(cranePosition[0], armCenterY, cranePosition[2])
+      // Set positions directly for all active cable segments
+      for (let i = 0; i < cableSegments; i++) {
+        const segmentApi = segmentApis[i]
+        if (segmentApi) {
+          // Calculate target position for this segment
+          const targetY = 2.85 - i * segmentLength
+          const targetX = cranePosition[0]
+          const targetZ = cranePosition[2]
+          
+          // Set position directly and reset velocity to prevent glitching
+          segmentApi.position.set(targetX, targetY, targetZ)
+          segmentApi.velocity.set(0, 0, 0)
+        }
+      }
       
-      // Update head position
-      headApi.position.set(cranePosition[0], headY, cranePosition[2])
+      // Set head position directly (no more physics forces)
+      const targetHeadY = 2.85 - (cableSegments - 1) * segmentLength - segmentLength/2 - 0.025
+      const clampedHeadY = Math.max(0.025, targetHeadY) // Don't go below floor
+      headApi.position.set(cranePosition[0], clampedHeadY, cranePosition[2])
+      headApi.velocity.set(0, 0, 0)
     }
-  }, [currentArmHeight, cranePosition, isGameStarted, isExtending, armApi, headApi])
+  }, [cranePosition, cableSegments, isGameStarted, headApi, segmentApis])
+
+  // Effect to make segments dynamic when game starts
+  useEffect(() => {
+    if (isGameStarted) {
+      // Make active cable segments dynamic
+      for (let i = 0; i < cableSegments; i++) {
+        const segmentApi = segmentApis[i]
+        if (segmentApi) {
+          segmentApi.mass.set(0.1) // Set mass to make it dynamic
+        }
+      }
+      
+      // Make head dynamic
+      if (headApi) {
+        headApi.mass.set(0.6) // Set mass to make it dynamic
+      }
+    }
+  }, [isGameStarted, cableSegments, segmentApis, headApi])
 
   // Keyboard controls
   useEffect(() => {
@@ -163,14 +278,21 @@ export default function Crane() {
           setTargetPosition(prev => [prev[0] + moveSpeed, prev[1], prev[2]])
           break
         case 'Space':
-          setIsExtended(prev => !prev)
+          if (isExtended) {
+            // When retracting, don't immediately change state - let cable retract first
+            setIsExtended(false)
+            setWaitingForRetraction(true)
+          } else {
+            // When extending, change immediately
+            setIsExtended(true)
+          }
           break
       }
     }
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [isGameStarted])
+  }, [isGameStarted, setIsGameStarted, setIsExtended])
 
   return (
     <group>
@@ -180,26 +302,33 @@ export default function Crane() {
         position={[cranePosition[0], 2.975, cranePosition[2]]}
         castShadow
         receiveShadow
+        userData={{ isCraneComponent: true }}
       >
         <boxGeometry args={[0.3, 0.05, 0.3]} />
         <meshStandardMaterial color="#666666" />
       </mesh>
 
-      {/* Arm - now follows physics naturally */}
-      <mesh
-        ref={armRef}
-        castShadow
-        receiveShadow
-      >
-        <cylinderGeometry args={[0.025, 0.025, currentArmHeight, 8]} />
-        <meshStandardMaterial color="#888888" />
-      </mesh>
+      {/* Cable segments - only render active ones */}
+      {Array.from({ length: cableSegments }, (_, i) => (
+        <mesh
+          key={i}
+          ref={segmentRefs[i]}
+          position={[cranePosition[0], 2.85 - i * segmentLength, cranePosition[2]]}
+          castShadow
+          receiveShadow
+          userData={{ isCraneComponent: true }}
+        >
+          <cylinderGeometry args={[0.015, 0.015, segmentLength, 8]} />
+          <meshStandardMaterial color="#333333" />
+        </mesh>
+      ))}
 
       {/* Head - now follows physics naturally */}
       <mesh
         ref={headRef}
         castShadow
         receiveShadow
+        userData={{ isCraneComponent: true }}
       >
         <boxGeometry args={[0.2, 0.05, 0.2]} />
         <meshStandardMaterial color="#444444" />
