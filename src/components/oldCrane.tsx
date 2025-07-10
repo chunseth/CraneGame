@@ -1,7 +1,7 @@
 import { useRef, useState, useEffect } from 'react'
 import { useBox, useCylinder, usePointToPointConstraint } from '@react-three/cannon'
 import { Text } from '@react-three/drei'
-import { Mesh } from 'three'
+import { Mesh, Vector3 } from 'three'
 import { useFrame } from '@react-three/fiber'
 
 interface OldCraneProps {
@@ -24,6 +24,16 @@ export default function OldCrane({
   const [cranePosition, setCranePosition] = useState(initialPosition)
   const [targetPosition, setTargetPosition] = useState(initialPosition)
   const [armHeight] = useState(0.2)
+  const [isHeadStable, setIsHeadStable] = useState(true)
+  const [spacePressed, setSpacePressed] = useState(false)
+  
+  // Use refs to track values without causing useEffect to recreate
+  const positionChangeCountRef = useRef(0)
+  
+  // Velocity threshold for considering head "stable"
+  const VELOCITY_THRESHOLD = 0.05
+  const POSITION_THRESHOLD = 0.05 // Increased threshold for position changes
+  const STABILITY_FRAMES = 10 // Number of frames with minimal movement to consider stable
   
   // Notify parent of position changes
   useEffect(() => {
@@ -95,6 +105,48 @@ export default function OldCrane({
     pivotB: [0, -armHeight/2, 0], // Bottom of arm
   })
 
+    // Track head velocity for stability detection using useFrame
+  const currentVelocityRef = useRef<[number, number, number]>([0, 0, 0])
+  
+  // Subscribe to head velocity once
+  useEffect(() => {
+    if (isGameStarted && headApi) {
+      const unsubscribe = headApi.velocity.subscribe((velocity) => {
+        currentVelocityRef.current = velocity
+      })
+      return unsubscribe
+    }
+  }, [isGameStarted, headApi])
+  
+  useFrame(() => {
+    if (isGameStarted) {
+      // Get current head velocity from ref
+      const currentVelocity = currentVelocityRef.current
+      
+      // Calculate velocity magnitude
+      const velocityMagnitude = Math.sqrt(
+        currentVelocity[0] ** 2 + currentVelocity[1] ** 2 + currentVelocity[2] ** 2
+      )
+      
+      // Check if velocity is minimal (stable)
+      if (velocityMagnitude < POSITION_THRESHOLD) {
+        positionChangeCountRef.current += 1
+      } else {
+        positionChangeCountRef.current = 0
+      }
+      
+      // Consider stable if minimal movement for several frames
+      const stable = positionChangeCountRef.current >= STABILITY_FRAMES
+      setIsHeadStable(stable)
+      
+      // If space was pressed and head is now stable, trigger the transition
+      if (spacePressed && stable && setIsExtended) {
+        setIsExtended(!isExtended)
+        setSpacePressed(false)
+      }
+    }
+  })
+
   // Smooth lerping animation for base only
   useFrame(() => {
     if (isGameStarted) {
@@ -161,7 +213,13 @@ export default function OldCrane({
           break
         case 'Space':
           if (setIsExtended) {
-            setIsExtended(!isExtended)
+            // Check if head is stable before allowing transition
+            if (isHeadStable) {
+              setIsExtended(!isExtended)
+            } else {
+              // Mark that space was pressed but head isn't stable yet
+              setSpacePressed(true)
+            }
           }
           break
       }
@@ -169,7 +227,8 @@ export default function OldCrane({
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [isGameStarted, setIsGameStarted, isExtended, setIsExtended])
+  }, [isGameStarted, setIsGameStarted, isExtended, setIsExtended, isHeadStable])
+
   return (
     <group>
       {/* Base */}
@@ -215,6 +274,10 @@ export default function OldCrane({
           Press Q to start
         </Text>
       )}
+
+
+
+
     </group>
   )
 } 
