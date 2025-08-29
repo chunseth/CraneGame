@@ -37,7 +37,7 @@ function App() {
       <div className="flex-1 relative">
         <Canvas
           shadows
-          camera={{ position: [0, 5, 10], fov: 50 }}
+          camera={{ position: [0, 4, 7], fov: 50 }}
           className="crane-canvas"
         >
           <Suspense fallback={<LoadingScreen />}>
@@ -70,8 +70,8 @@ function App() {
             <OrbitControls
               enablePan={false}
               enableZoom={true}
-              minDistance={5}
-              maxDistance={20}
+              minDistance={3}
+              maxDistance={15}
               maxPolarAngle={Math.PI / 2}
               enableRotate={false} // Disable mouse rotation since we're using arrow keys
             />

@@ -1,12 +1,8 @@
-import { useRef, useEffect } from 'react'
+import { useRef } from 'react'
 import { useBox } from '@react-three/cannon'
 import { Mesh } from 'three'
 
-interface BoundaryBoxProps {
-  onCeilingRef?: (ref: React.RefObject<Mesh>) => void
-}
-
-export default function BoundaryBox({ onCeilingRef }: BoundaryBoxProps) {
+export default function BoundaryBox() {
   // Floor physics
   const [floorRef] = useBox(() => ({
     mass: 0,
@@ -48,20 +44,12 @@ export default function BoundaryBox({ onCeilingRef }: BoundaryBoxProps) {
   }), useRef<Mesh>(null))
 
   // Ceiling physics
-  const ceilingRef = useRef<Mesh>(null)
-  const [ceilingApi] = useBox(() => ({
+  const [ceilingRef] = useBox(() => ({
     mass: 0,
     position: [0, 3, 0],
     args: [5, 0.1, 5],
     type: 'Static',
-  }), ceilingRef)
-
-  // Expose ceiling ref to parent component
-  useEffect(() => {
-    if (onCeilingRef && ceilingRef.current) {
-      onCeilingRef(ceilingRef)
-    }
-  }, [onCeilingRef])
+  }), useRef<Mesh>(null))
 
   return (
     <group>
